@@ -480,13 +480,23 @@ class StockCountScreen(MDScreen):
         # 6. เคลียร์ช่องและค้าง Cursor พร้อมยิงต่อ
         self.ids.txt_barcode.text = ""
 
-        Clock.schedule_once(
-            lambda dt:self.force_focus(),
-            0.05
-        )
+        Clock.schedule_once(self.focus_barcode_after_scan, 0.10)
 
         self.update_recent_list()
+    def focus_barcode_after_scan(self, dt):
+    
+        txt = self.ids.txt_barcode
 
+        txt.focus = False
+
+        Window.release_keyboard()
+
+        def do_focus(dt):
+
+            txt.focus = True
+            txt.cursor = (0, 0)
+
+        Clock.schedule_once(do_focus, 0.05)
     def reset_scan_field(self):
         
         self.ids.txt_barcode.text = ""
@@ -629,13 +639,32 @@ class ExportScreen(MDScreen):
     def clear_pda_table(self):
     
         try:
-
             clear_scan_table()
+
+            # ปิด Dialog
+            if self.confirm_clear_dialog:
+                self.confirm_clear_dialog.dismiss()
+
+            # แจ้งผล
+            MDApp.get_running_app().show_alert(
+                "✅ สำเร็จ",
+                "ล้างข้อมูลการสแกนในเครื่องเรียบร้อยแล้ว"
+            )
+
+            # Refresh รายการบนหน้าจอ (ถ้ามี)
+            if hasattr(self, "update_recent_list"):
+                self.update_recent_list()
 
         except Exception as e:
 
-            print(f"Error Clearing Table: {e}")
-            
+            if self.confirm_clear_dialog:
+                self.confirm_clear_dialog.dismiss()
+
+            MDApp.get_running_app().show_alert(
+                "❌ Error",
+                f"ไม่สามารถล้างข้อมูลได้\n{e}"
+            )
+                
     def show_confirm_clear_dialog(self):
         self.confirm_clear_dialog = MDDialog(
             title="⚠️ ยืนยันการล้างข้อมูล",
