@@ -15,8 +15,6 @@ from kivymd.uix.screen import MDScreen
 from kivymd.uix.dialog import MDDialog
 from kivymd.uix.button import MDRaisedButton, MDFlatButton
 from kivymd.uix.textfield import MDTextField
-from kivy.clock import Clock
-from kivy.utils import platform
 from kivymd.uix.menu import MDDropdownMenu # อย่าลืมบรรทัดนี้ที่ด้านบน
 from kivy.properties import StringProperty
 
@@ -62,8 +60,8 @@ class InventoryApp(MDApp):
             activity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT)
         
         # 2. ป้องกันคีย์บอร์ดดันหน้าจอ (Pan mode)
-        #Window.softinput_mode='below_target'
-        Window.softinput_mode='resize'
+            Window.softinput_mode='below_target'
+        #Window.softinput_mode='resize'
         
         init_db() 
         self.theme_cls.theme_style = "Light"
@@ -222,10 +220,13 @@ class StockCountScreen(MDScreen):
     edit_text_field = None
     
     def on_enter(self):
-        """เมื่อเข้าหน้าจอ ให้โฟกัสที่ช่อง location ทันที"""
-        self.start_android_scanner()
-        Clock.schedule_once(lambda dt: self.set_barcode_focus(), 0.5)
         
+        self.start_android_scanner()
+
+        Clock.schedule_once(
+            lambda dt:self.force_focus(),
+            0.3
+        )
         
     def release_kb(self):
         if platform == 'android':
@@ -234,38 +235,84 @@ class StockCountScreen(MDScreen):
         self.stop_android_scanner()
         self.manager.current = 'menu_screen'
         
-    def focus_barcode(self):
-        """เรียกฟังก์ชันนี้เพื่อดึง Focus กลับมาที่ช่องบาร์โค้ด"""
-        self.update_recent_list()
-        # ใช้ Clock หน่วงเวลาเพื่อให้แน่ใจว่า UI พร้อมรับ focus
-        Clock.schedule_once(lambda dt:self.set_barcode_focus(), 0.2)
-        self.start_android_scanner()    
-    # def focus_barcode(self):
-    #     self.update_recent_list()  
-    #     self.start_android_scanner()
     def set_barcode_focus(self):
         
-        self.ids.txt_barcode.focus=False
+        self.ids.txt_barcode.focus = False
 
-        self.ids.txt_barcode.focus=True
+        Clock.schedule_once(
+            lambda dt: self.force_focus(),
+            0.2
+        )
+
+
+    def force_focus(self):
+    
+        self.ids.txt_barcode.focus = False
+
+        def do_focus(dt):
+
+            self.ids.txt_barcode.focus = True
+
+            if platform == "android":
+
+                try:
+                    Window.release_keyboard()
+                except:
+                    pass
+
+        Clock.schedule_once(do_focus, 0.05)
     def start_android_scanner(self):
-        """เริ่มเปิดระบบดักจับ Intent บาร์โค้ดของเครื่อง CipherLab"""
-        if platform == 'android':
-            try:
-                PythonActivity = autoclass('org.kivy.android.PythonActivity')
-                Context = autoclass('android.content.Context')
-                IntentFilter = autoclass('android.content.IntentFilter')
-                
-                # สร้าง BroadcastReceiver ใน Java ผ่าน jnius
-                self.receiver = create_android_receiver(self.on_android_barcode_received)
-                
-                # ลงทะเบียน Event Listener สำหรับรับค่า Intent
-                current_activity = PythonActivity.mActivity
-                intent_filter = IntentFilter("com.cipherlab.barcode.queue")
-                current_activity.registerReceiver(self.receiver, intent_filter)
-                print("✓ Android Barcode Receiver Registered")
-            except Exception as e:
-                print(f"Android Scanner Error: {e}")
+    
+        if platform != "android":
+            return
+
+        if hasattr(self, "receiver"):
+            return
+
+        try:
+
+            PythonActivity = autoclass("org.kivy.android.PythonActivity")
+            IntentFilter = autoclass("android.content.IntentFilter")
+
+            self.receiver = create_android_receiver(
+                self.on_android_barcode_received
+            )
+
+            activity = PythonActivity.mActivity
+
+            filters = [
+
+                # CipherLab
+                "com.cipherlab.barcode.queue",
+
+                # Newland
+                "nlscan.action.SCANNER_RESULT",
+
+                # Zebra
+                "com.symbol.datawedge.api.RESULT_ACTION",
+
+                # Honeywell
+                "com.honeywell.decode.intent.action.EDIT_DATA",
+
+                # Urovo
+                "android.intent.ACTION_DECODE_DATA"
+
+            ]
+
+            for action in filters:
+
+                intent = IntentFilter(action)
+
+                activity.registerReceiver(
+                    self.receiver,
+                    intent
+                )
+
+            print("Scanner Receiver Ready")
+
+        except Exception as e:
+
+            print(e)
 
     def stop_android_scanner(self):
         """ปิดระบบดักจับเมื่อออกจากหน้าสแกน"""
@@ -313,13 +360,19 @@ class StockCountScreen(MDScreen):
     #         self.process_barcode(barcode_input)
     #     self.ids.txt_barcode.text = ""
     def on_windows_keyboard_validate(self):
-        barcode_input = self.ids.txt_barcode.text.strip()
-        if barcode_input:
-            self.process_barcode(barcode_input)
+    
+        barcode = self.ids.txt_barcode.text.strip()
+
+        if barcode:
+
+            self.process_barcode(barcode)
+
         self.ids.txt_barcode.text = ""
-        # ย้ำการ focus หลังสแกนเสร็จ
-        Clock.schedule_once(lambda dt: setattr(self.ids.txt_barcode, 'focus', True), 0.1)
-        
+
+        Clock.schedule_once(
+            lambda dt:self.force_focus(),
+        0.05
+    )
     def on_barcode_scan(self):
         """รองรับการเรียกใช้งานจากไฟล์ main_design.kv เมื่อกด Enter"""
         self.on_windows_keyboard_validate()
@@ -391,14 +444,24 @@ class StockCountScreen(MDScreen):
             print(f"Error Saving Scan: {e}")
 
         # 6. เคลียร์ช่องและค้าง Cursor พร้อมยิงต่อ
-        Clock.schedule_once(lambda dt: setattr(self.ids.txt_barcode, 'focus', True), 0.2)
+        self.ids.txt_barcode.text = ""
+
+        Clock.schedule_once(
+            lambda dt:self.force_focus(),
+            0.05
+        )
+
         self.update_recent_list()
 
     def reset_scan_field(self):
-        """ช่วยให้โค้ดสะอาดและ Cursor กลับมาพร้อมสแกนใหม่"""
+        
         self.ids.txt_barcode.text = ""
-        self.ids.txt_barcode.focus = True
-        self.release_kb() # ปิดคีย์บอร์ดที่เด้งขึ้นมา
+
+        Clock.schedule_once(
+            lambda dt: self.force_focus(),
+            0.05
+        )
+
         self.update_recent_list()
 
     def update_recent_list(self):
@@ -552,51 +615,70 @@ class ExportScreen(MDScreen):
 
 # --- โครงสร้างเชื่อมต่อ Java Class สำหรับการทำงานแบบ Background Intent Receiver ---
 def create_android_receiver(callback):
-    if platform != 'android':
-        return None
     
+    if platform != "android":
+        return None
+
     class AndroidBarcodeReceiver(PythonJavaClass):
-        __javainterfaces__ = ['android/content/BroadcastReceiver']
-        __javacontext__ = 'app'
+
+        __javainterfaces__ = [
+            "android/content/BroadcastReceiver"
+        ]
+
+        __javacontext__ = "app"
 
         def __init__(self, cb):
-            super(AndroidBarcodeReceiver, self).__init__()
+
+            super().__init__()
+
             self.cb = cb
 
-        @java_method('(Landroid/content/Context;Landroid/content/Intent;)V')
+        @java_method("(Landroid/content/Context;Landroid/content/Intent;)V")
         def onReceive(self, context, intent):
-            # ดึงข้อมูลจาก String Extra ที่กำหนดใน ReaderConfig
-            barcode_data = intent.getStringExtra("com.cipherlab.barcode.queue_string")
-            if barcode_data:
-                Clock.schedule_once(lambda dt: self.cb(str(barcode_data)), 0)
+
+            barcode = None
+
+            keys = [
+
+                "com.cipherlab.barcode.queue_string",
+
+                "SCAN_BARCODE1",
+
+                "scan_result",
+
+                "SCAN_STATE",
+
+                "barcode_string",
+
+                "decode_data",
+
+                "scannerdata",
+
+                "data"
+
+            ]
+
+            for k in keys:
+
+                try:
+
+                    barcode = intent.getStringExtra(k)
+
+                    if barcode:
+                        break
+
+                except:
+                    pass
+
+            if barcode:
+
+                Clock.schedule_once(
+                    lambda dt: self.cb(barcode.strip())
+                )
 
     return AndroidBarcodeReceiver(callback)
 
-class InventoryApp(MDApp):
-    dialog = None
-    def release_kb(self):
-        if platform == 'android':
-            Window.release_keyboard()
-    def build(self):
-        if platform == 'android':
-            from jnius import autoclass
-            ActivityInfo = autoclass('android.content.pm.ActivityInfo')
-            PythonActivity = autoclass('org.kivy.android.PythonActivity')
-            activity = PythonActivity.mActivity
-            activity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT)
-        
-        # 2. ป้องกันคีย์บอร์ดดันหน้าจอ (Pan mode)
-        #Window.softinput_mode='below_target'
-        Window.softinput_mode='resize'
-        
-        init_db() 
-        self.theme_cls.theme_style = "Light"
-        self.theme_cls.primary_palette = "Orange"
-        self.theme_cls.material_design_icons = "font"
-        font_path = os.path.join(CUR_DIR, "fonts", "Kanit-Regular.ttf")
-        if not os.path.exists(font_path):
-            font_path = os.path.join(CUR_DIR, "Kanit-Regular.ttf")
-
+    
 if __name__ == "__main__":
     Window.size = (380, 680)
     InventoryApp().run()
