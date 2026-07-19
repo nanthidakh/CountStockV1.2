@@ -109,7 +109,38 @@ class ConfigScreen(MDScreen):
         super().__init__(**kw)
         self.menu = None
         self.current_selected_config = {}
+    def on_enter(self):
+        """โหลดข้อมูลอัตโนมัติเมื่อเข้าหน้านี้"""
+        # ดึงข้อมูลจากฐานข้อมูล SQLite
+        config = get_config() 
+        
+        # ถ้าไม่มีข้อมูลใน DB ให้ข้ามไป (ไม่ต้องโชว์อะไร)
+        if not config:
+            return
 
+        # config คือ tuple ตามลำดับในฐานข้อมูลของคุณ:
+        # (branch_name, db_server_ip, db_name, db_user, db_password, count_month, iis_server_ip)
+        
+        # 1. อัปเดต Label บน UI
+        self.ids.lbl_branch_name.text = f"สาขา: {config[0]}"
+        self.ids.lbl_db_ip.text = f"DB Server IP: {config[1]}"
+        self.ids.lbl_db_name.text = f"DB Name: {config[2]}"
+        self.ids.lbl_month.text = f"เดือน: {config[5]}"
+        
+        # 2. อัปเดต Input Field และ Dropdown
+        self.ids.drop_branch.text = config[0]
+        self.ids.txt_iis_ip.text = config[6]
+        
+        # 3. เก็บข้อมูลไว้ในตัวแปรสำหรับใช้งานต่อ (เช่น ตอนกดปุ่ม Save หรือ Test)
+        self.current_selected_config = {
+            'branch_name': config[0],
+            'db_server_ip': config[1],
+            'db_name': config[2],
+            'db_user': config[3],
+            'db_password': config[4],
+            'count_month': config[5],
+            'iis_server_ip': config[6]
+        }
     def fetch_config_from_iis(self):
         """1. ดึงข้อมูลจาก IIS"""
         iis_ip = self.ids.txt_iis_ip.text.strip()
@@ -220,13 +251,14 @@ class StockCountScreen(MDScreen):
     edit_text_field = None
     
     def on_enter(self):
-        
         self.start_android_scanner()
 
         Clock.schedule_once(
-            lambda dt:self.force_focus(),
+            lambda dt: self.force_focus(),
             0.3
         )
+
+        self.update_recent_list()
         
     def release_kb(self):
         if platform == 'android':
@@ -254,7 +286,6 @@ class StockCountScreen(MDScreen):
             self.ids.txt_barcode.focus = True
 
             if platform == "android":
-
                 try:
                     Window.release_keyboard()
                 except:
@@ -280,7 +311,7 @@ class StockCountScreen(MDScreen):
 
             activity = PythonActivity.mActivity
 
-            filters = [
+            actions = [
 
                 # CipherLab
                 "com.cipherlab.barcode.queue",
@@ -288,8 +319,9 @@ class StockCountScreen(MDScreen):
                 # Newland
                 "nlscan.action.SCANNER_RESULT",
 
-                # Zebra
+                # Zebra DataWedge
                 "com.symbol.datawedge.api.RESULT_ACTION",
+                "com.symbol.datawedge.data_string",
 
                 # Honeywell
                 "com.honeywell.decode.intent.action.EDIT_DATA",
@@ -299,20 +331,16 @@ class StockCountScreen(MDScreen):
 
             ]
 
-            for action in filters:
-
-                intent = IntentFilter(action)
-
+            for action in actions:
                 activity.registerReceiver(
                     self.receiver,
-                    intent
+                    IntentFilter(action)
                 )
 
             print("Scanner Receiver Ready")
 
         except Exception as e:
-
-            print(e)
+            print("Scanner Error:", e)
 
     def stop_android_scanner(self):
         """ปิดระบบดักจับเมื่อออกจากหน้าสแกน"""
@@ -324,7 +352,13 @@ class StockCountScreen(MDScreen):
                 del self.receiver
             except Exception as e:
                 print(f"Stop Scanner Error: {e}")
-
+    def focus_barcode(self):
+            """เรียกฟังก์ชันนี้เพื่อดึง Focus กลับมาที่ช่องบาร์โค้ด"""
+            self.update_recent_list()
+        # ใช้ Clock หน่วงเวลาเพื่อให้แน่ใจว่า UI พร้อมรับ focus
+            Clock.schedule_once(lambda dt:self.set_barcode_focus(), 0.2)
+            self.start_android_scanner()   
+        
     def play_sound(self, success=True):
         """ระบบเล่นเสียงแจ้งเตือน"""
         if platform == 'android':
@@ -628,9 +662,7 @@ def create_android_receiver(callback):
         __javacontext__ = "app"
 
         def __init__(self, cb):
-
             super().__init__()
-
             self.cb = cb
 
         @java_method("(Landroid/content/Context;Landroid/content/Intent;)V")
@@ -640,29 +672,33 @@ def create_android_receiver(callback):
 
             keys = [
 
+                # CipherLab
                 "com.cipherlab.barcode.queue_string",
 
+                # Newland
                 "SCAN_BARCODE1",
-
                 "scan_result",
 
-                "SCAN_STATE",
+                # Zebra
+                "com.symbol.datawedge.data_string",
 
+                # Honeywell
+                "barcode_data",
+
+                # Urovo
                 "barcode_string",
-
                 "decode_data",
-
                 "scannerdata",
 
+                # Generic
                 "data"
 
             ]
 
-            for k in keys:
+            for key in keys:
 
                 try:
-
-                    barcode = intent.getStringExtra(k)
+                    barcode = intent.getStringExtra(key)
 
                     if barcode:
                         break
@@ -673,7 +709,8 @@ def create_android_receiver(callback):
             if barcode:
 
                 Clock.schedule_once(
-                    lambda dt: self.cb(barcode.strip())
+                    lambda dt: self.cb(barcode.strip()),
+                    0
                 )
 
     return AndroidBarcodeReceiver(callback)
