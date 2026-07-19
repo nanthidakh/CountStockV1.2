@@ -1,0 +1,27 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# SQLite Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Buildozer
+.buildozer/
+bin/
+
+# Build output
+build/
+dist/
+
+# APK
+*.apk
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
