@@ -263,8 +263,7 @@ class StockCountScreen(MDScreen):
     edit_text_field = None
     
     def on_enter(self):
-        self.start_android_scanner()
-
+ 
         Clock.schedule_once(
             lambda dt: self.force_focus(),
             0.3
@@ -303,9 +302,9 @@ class StockCountScreen(MDScreen):
                 except:
                     pass
 
-        Clock.schedule_once(do_focus, 0.05)
+        Clock.schedule_once(do_focus,0.1)
 
-    def start_android_scanner(self):
+    '''  def start_android_scanner(self):
 
         if platform != "android":
             return
@@ -345,24 +344,27 @@ class StockCountScreen(MDScreen):
 
         except Exception as e:
             print(e)
-
+    ''' 
     def stop_android_scanner(self):
+    
         """ปิดระบบดักจับเมื่อออกจากหน้าสแกน"""
+
         if platform == 'android' and hasattr(self, 'receiver'):
+
             try:
+
                 PythonActivity = autoclass('org.kivy.android.PythonActivity')
+
                 current_activity = PythonActivity.mActivity
+
                 current_activity.unregisterReceiver(self.receiver)
+
                 del self.receiver
+
             except Exception as e:
+
                 print(f"Stop Scanner Error: {e}")
-    def focus_barcode(self):
-            """เรียกฟังก์ชันนี้เพื่อดึง Focus กลับมาที่ช่องบาร์โค้ด"""
-            self.update_recent_list()
-        # ใช้ Clock หน่วงเวลาเพื่อให้แน่ใจว่า UI พร้อมรับ focus
-            Clock.schedule_once(lambda dt:self.set_barcode_focus(), 0.2)
-            self.start_android_scanner()   
-        
+                
     def play_sound(self, success=True):
         """ระบบเล่นเสียงแจ้งเตือน"""
         if platform == 'android':
@@ -390,27 +392,32 @@ class StockCountScreen(MDScreen):
 
     def on_android_barcode_received(self, barcode_str):
         """รับค่าบาร์โค้ดจากหัวอ่าน CipherLab ส่งมาทำงานต่อ"""
+        print("SCAN RECEIVE =", barcode_str)
         self.process_barcode(barcode_str)
 
-    def on_windows_keyboard_validate(self):
+    def on_barcode_input(self):
     
         barcode = self.ids.txt_barcode.text.strip()
 
-        if barcode:
+        if not barcode:
+            return
 
-            self.process_barcode(barcode)
+        print("TEXTFIELD BARCODE =", barcode)
+
+        self.process_barcode(barcode)
 
         self.ids.txt_barcode.text = ""
 
         Clock.schedule_once(
-            lambda dt:self.force_focus(),
-        0.05
-    )
+            lambda dt: self.force_focus(),
+            0.05
+        )
     def on_barcode_scan(self):
         """รองรับการเรียกใช้งานจากไฟล์ main_design.kv เมื่อกด Enter"""
         self.on_windows_keyboard_validate()
     def process_barcode(self, barcode_input):
         """ฟังก์ชันหลักในการตรวจสอบและบันทึกข้อมูล"""
+        print("PROCESS =", barcode_input)
         barcode_input = barcode_input.strip()
         location = self.ids.txt_location.text.strip()
         staff = self.ids.txt_staff.text.strip()
@@ -496,9 +503,9 @@ class StockCountScreen(MDScreen):
         #   2. เคลียร์ข้อความ
         #   3. ใช้ force_focus() ซึ่ง toggle focus False -> True ผ่าน Clock delay
         #      (pattern เดียวกับที่ on_windows_keyboard_validate ใช้อยู่แล้ว)
-        self.update_recent_list()
         self.ids.txt_barcode.text = ""
-        Clock.schedule_once(lambda dt: self.force_focus(), 0.05)
+        self.update_recent_list()
+
 
     def reset_scan_field(self):
         # BUGFIX: เดิมฟังก์ชันนี้ถูกคอมเมนต์ทิ้งไว้ทั้งหมด แต่โค้ดด้านบนยังเรียก
@@ -689,7 +696,7 @@ class ExportScreen(MDScreen):
         self.confirm_clear_dialog.open()
 
 # --- โครงสร้างเชื่อมต่อ Java Class สำหรับการทำงานแบบ Background Intent Receiver ---
-def create_android_receiver(callback):
+''' def create_android_receiver(callback):
     
     if platform != "android":
         return None
@@ -741,7 +748,7 @@ def create_android_receiver(callback):
                 )
 
     return AndroidBarcodeReceiver(callback)
-
+ '''
     
 if __name__ == "__main__":
     Window.size = (380, 680)
