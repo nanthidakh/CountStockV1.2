@@ -207,7 +207,15 @@ ScreenManager:
 
 <StockCountScreen>:
     name: 'count_screen'
-    on_enter: root.focus_barcode()  
+    # BUGFIX: เดิมมี `on_enter: root.focus_barcode()` ผูกไว้ตรงนี้ ซ้ำซ้อนกับ
+    # method `def on_enter(self):` ที่ override ไว้ใน main.py (StockCountScreen)
+    # ทั้งสองตัวถูกเรียกพร้อมกันทุกครั้งที่เข้าหน้านี้ ทำให้เกิด timer ตั้ง focus
+    # ของ txt_barcode แข่งกันสองชุดคนละจังหวะเวลา (0.3s/0.35s จากฝั่ง python
+    # กับ 0.2s/0.4s/0.45s จากฝั่ง kv) ผลคือ focus ถูกตั้ง True แล้วเด้งกลับ False
+    # แล้วค่อย True อีกทีในช่วงเวลาสั้นๆ ทำให้บนอุปกรณ์จริง (CipherLab RK25 /
+    # Newland MT67) cursor กลับไปที่ txt_barcode ไม่เสถียร บาง scan กลับ
+    # บาง scan ไม่กลับ แก้โดยลบบรรทัดนี้ออก ให้ logic การโฟกัสควบคุมจาก
+    # on_enter() ใน main.py เพียงจุดเดียว (single source of truth)
     
     MDBoxLayout:
         orientation: 'vertical'
@@ -376,4 +384,3 @@ ScreenManager:
                 height: "50dp"
                 md_bg_color: 0.8, 0.2, 0.2, 1 # สีแดง
                 on_release: root.show_confirm_clear_dialog() # เรียก Dialog ยืนยันก่อน
-                

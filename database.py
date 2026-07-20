@@ -39,45 +39,48 @@ def get_connection():
 
 def init_db():
     conn = get_connection() 
-    cursor = conn.cursor()
-    
-    # 1. ตารางเก็บค่า Configuration
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS db_config (
-            branch_name TEXT, 
-            iis_server_ip TEXT, 
-            db_server_ip TEXT, 
-            db_name TEXT, 
-            db_user TEXT, 
-            db_password TEXT, 
-            count_month TEXT
-        )
-    """)
-    
-    # 2. ตารางเก็บข้อมูลสินค้าหลัก
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS main_products (
-            barcode TEXT PRIMARY KEY, product_code TEXT, product_name TEXT, 
-            Dept TEXT, CountMonth TEXT, unit TEXT
-        )
-    """)
-    
-    # 3. ตารางเก็บผลการสแกน
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS Countstock_scan_data (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            location TEXT, staff_name TEXT, product_code TEXT, 
-            barcode TEXT, qty INTEGER DEFAULT 1, 
-            scan_timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, 
-            scan_date TEXT, export_date TEXT, is_exported INTEGER DEFAULT 0
-        )
-    """)
-    
-    # Commit ครั้งเดียวตอนท้าย
-    conn.commit()
-    # ปิดครั้งเดียวตอนท้าย
-    conn.close()
-    print("✓ เริ่มต้นระบบฐานข้อมูล SQLite เรียบร้อยแล้ว")
+    # BUGFIX: เดิมถ้า CREATE TABLE ตัวใดตัวหนึ่งเกิด error กลางทาง จะไม่มีการ
+    # commit/close connection เลย (conn ค้างเปิดอยู่) ห่อด้วย try/finally
+    # เพื่อให้ conn.close() ทำงานเสมอไม่ว่าจะสำเร็จหรือ error
+    try:
+        cursor = conn.cursor()
+
+        # 1. ตารางเก็บค่า Configuration
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS db_config (
+                branch_name TEXT, 
+                iis_server_ip TEXT, 
+                db_server_ip TEXT, 
+                db_name TEXT, 
+                db_user TEXT, 
+                db_password TEXT, 
+                count_month TEXT
+            )
+        """)
+
+        # 2. ตารางเก็บข้อมูลสินค้าหลัก
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS main_products (
+                barcode TEXT PRIMARY KEY, product_code TEXT, product_name TEXT, 
+                Dept TEXT, CountMonth TEXT, unit TEXT
+            )
+        """)
+
+        # 3. ตารางเก็บผลการสแกน
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS Countstock_scan_data (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                location TEXT, staff_name TEXT, product_code TEXT, 
+                barcode TEXT, qty INTEGER DEFAULT 1, 
+                scan_timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, 
+                scan_date TEXT, export_date TEXT, is_exported INTEGER DEFAULT 0
+            )
+        """)
+
+        conn.commit()
+        print("✓ เริ่มต้นระบบฐานข้อมูล SQLite เรียบร้อยแล้ว")
+    finally:
+        conn.close()
 
 def save_config(branch, ip, db, user, pwd, count_month, iis_ip):
     conn = get_connection()
@@ -253,6 +256,33 @@ def get_recent_scans_from_table(limit=5):
     conn.close()
     return rows
 
+def _normalize_product_row(item):
+    """
+    BUGFIX: API ฝั่ง IIS/C# ในระบบนี้ (ดูตัวอย่างจาก get_config.ashx ที่ใช้
+    item['branch_name']) ตอบกลับเป็น JSON แบบ list of dict ไม่ใช่ list of
+    list/tuple แต่เดิมโค้ดส่ง `data` (list of dict) เข้า cursor.executemany()
+    ตรงๆ กับ query ที่ใช้ `?` (qmark placeholder) ซึ่ง sqlite3 รองรับเฉพาะ
+    list/tuple ตามตำแหน่งเท่านั้น ถ้าส่ง dict เข้าไปจะ error ทันทีทุกครั้งที่
+    กด Import ฟังก์ชันนี้แปลง 1 record จาก API ให้เป็น tuple เรียงลำดับตาม
+    คอลัมน์ (barcode, product_code, product_name, Dept, CountMonth, unit)
+    ก่อนเสมอ ไม่ว่า API จะตอบมาเป็น dict หรือ list/tuple อยู่แล้วก็ตาม
+
+    ⚠️ ชื่อคีย์ที่ใช้ .get() ด้านล่างอิงตามชื่อคอลัมน์ในตาราง main_products
+    ถ้า field name จริงจาก get_products.ashx ไม่ตรงกับนี้ (เช่นใช้ตัวพิมพ์เล็ก
+    ทั้งหมด หรือชื่ออื่น) ต้องแก้ key ตรงนี้ให้ตรงกับ response จริงของ API
+    """
+    if isinstance(item, dict):
+        return (
+            item.get('barcode'),
+            item.get('product_code'),
+            item.get('product_name'),
+            item.get('Dept'),
+            item.get('CountMonth'),
+            item.get('unit'),
+        )
+    # ถ้า API ส่งมาเป็น list/tuple เรียงตามตำแหน่งอยู่แล้ว ใช้ตามเดิม
+    return tuple(item)
+
 def import_products_from_mssql():
     """ฟังก์ชันหลักสำหรับกดปุ่มนำเข้าข้อมูล (ปรับปรุงรองรับข้อมูลจำนวนมาก)"""
     try:
@@ -293,9 +323,15 @@ def import_products_from_mssql():
             # แบ่งบันทึกทีละ 5,000 รายการ เพื่อไม่ให้กิน Memory และไม่ให้ UI ค้างนาน
             batch_size = 5000
             for i in range(0, total_items, batch_size):
-                batch = data[i : i + batch_size]
+                # BUGFIX: แปลงแต่ละ record ให้เป็น tuple ตามลำดับคอลัมน์ก่อนเสมอ
+                # (ดูเหตุผลเต็มใน _normalize_product_row ด้านบน)
+                batch = [_normalize_product_row(item) for item in data[i : i + batch_size]]
+                # BUGFIX: เปลี่ยนจาก INSERT ธรรมดาเป็น INSERT OR REPLACE เพราะ
+                # barcode เป็น PRIMARY KEY ถ้าข้อมูลจริงมีบาร์โค้ดซ้ำ/ว่างซ้ำกัน
+                # (พบได้บ่อยในข้อมูลสินค้าจริง) INSERT ธรรมดาจะ error
+                # (IntegrityError) แล้วทำให้ import ทั้งก้อนล้มทันที
                 cursor.executemany("""
-                    INSERT INTO main_products (barcode, product_code, product_name, Dept, CountMonth, unit)
+                    INSERT OR REPLACE INTO main_products (barcode, product_code, product_name, Dept, CountMonth, unit)
                     VALUES (?, ?, ?, ?, ?, ?)
                 """, batch)
                 # Commit เป็นระยะๆ ป้องกัน Transaction Log เต็ม

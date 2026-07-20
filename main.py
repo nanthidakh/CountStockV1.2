@@ -22,8 +22,13 @@ from kivy.properties import StringProperty
 APP_VERSION = "1.2"
 if platform == 'android':
     from jnius import autoclass, PythonJavaClass, java_method
-else:
+    winsound = None
+elif platform == 'win':
     import winsound
+else:
+    # BUGFIX: เดิม `import winsound` แบบไม่มีเงื่อนไข ทำให้แอปพังทันทีตอนเปิด
+    # ถ้ารันบน Linux/macOS (เช่นตอนพัฒนา) เพราะโมดูล winsound มีเฉพาะบน Windows
+    winsound = None
 
 Window.keyboard_anim_delay = 0
 
@@ -43,7 +48,12 @@ from database import (
     get_connection
 )
 
-CUR_DIR = os.path.dirname(__file__) if __file__ in locals() else os.getcwd()
+# BUGFIX: เดิมใช้ `__file__ in locals()` ซึ่งเช็คผิด (เช็คว่าค่าของ __file__ เป็น "คีย์"
+# อยู่ใน dict locals() หรือไม่ ซึ่งไม่มีความหมายตามที่ตั้งใจ) เปลี่ยนมาใช้ try/except แทน
+try:
+    CUR_DIR = os.path.dirname(os.path.abspath(__file__))
+except NameError:
+    CUR_DIR = os.getcwd()
 
 class InventoryApp(MDApp):
     dialog = None
@@ -223,9 +233,14 @@ class ImportScreen(MDScreen):
         threading.Thread(target=self.run_import_thread, daemon=True).start()
 
     def run_import_thread(self):
-        # ทำงานหนักที่นี่
-        result = import_products_from_mssql()
-        
+        # BUGFIX: เดิมถ้า import_products_from_mssql() throw exception ตรงๆ
+        # (ไม่ใช่ return ค่า error กลับมา) จะทำให้ thread ตายเงียบๆ ปุ่ม Import
+        # จะค้าง disabled อยู่ตลอดและผู้ใช้ไม่เห็น error ใดๆ เลย
+        try:
+            result = import_products_from_mssql()
+        except Exception as e:
+            result = str(e)
+
         # ส่งผลลัพธ์กลับไปที่ Main Thread เพื่ออัปเดต UI
         Clock.schedule_once(lambda dt: self.show_import_result(result))
 
@@ -289,8 +304,9 @@ class StockCountScreen(MDScreen):
                     pass
 
         Clock.schedule_once(do_focus, 0.05)
+
     def start_android_scanner(self):
-    
+
         if platform != "android":
             return
 
@@ -301,7 +317,7 @@ class StockCountScreen(MDScreen):
             PythonActivity = autoclass("org.kivy.android.PythonActivity")
             IntentFilter = autoclass("android.content.IntentFilter")
 
-            self.receiver = create_android_receiver(
+            receiver = create_android_receiver(
                 self.on_android_barcode_received
             )
 
@@ -312,13 +328,20 @@ class StockCountScreen(MDScreen):
                 "com.cipherlab.barcode.queue"        # CipherLab
             ]
 
+            # BUGFIX: เดิมตั้ง self.receiver ก่อนวน registerReceiver ถ้าตัวใดตัวหนึ่ง
+            # ลงทะเบียนไม่สำเร็จ (exception) hasattr(self, "receiver") ด้านบนจะ True
+            # อยู่ดี ทำให้ครั้งต่อไปที่เข้าหน้านี้จะไม่พยายามลงทะเบียนซ้ำอีกเลย
+            registered_any = False
             for action in actions:
-                activity.registerReceiver(
-                    self.receiver,
-                    IntentFilter(action)
-                )
+                try:
+                    activity.registerReceiver(receiver, IntentFilter(action))
+                    registered_any = True
+                except Exception as reg_err:
+                    print(f"Register {action} failed: {reg_err}")
 
-            print("Scanner Receiver Ready")
+            if registered_any:
+                self.receiver = receiver
+                print("Scanner Receiver Ready")
 
         except Exception as e:
             print(e)
@@ -356,23 +379,19 @@ class StockCountScreen(MDScreen):
                     tone_gen.startTone(ToneGenerator.TONE_SUP_ERROR, 400)
             except Exception as e:
                 print(f"Sound Error: {e}")
-        else:
+        elif winsound is not None:
             # เล่นเสียงบี๊บบน Windows สำหรับทดสอบพัฒนา
             if success:
                 winsound.Beep(2000, 150)
             else:
                 winsound.Beep(600, 400)
+        # BUGFIX: ถ้าไม่ใช่ android และไม่ใช่ windows (เช่น mac/linux dev) ให้ข้ามไปเงียบๆ
+        # แทนที่จะพยายามเรียก winsound ที่ import ไม่สำเร็จแล้วทำให้แอปพัง
 
     def on_android_barcode_received(self, barcode_str):
         """รับค่าบาร์โค้ดจากหัวอ่าน CipherLab ส่งมาทำงานต่อ"""
         self.process_barcode(barcode_str)
 
-    # def on_windows_keyboard_validate(self):
-    #     """รับค่าจากแป้นพิมพ์ (สำหรับเปิดทดสอบบนคอมพิวเตอร์)"""
-    #     barcode_input = self.ids.txt_barcode.text.strip()
-    #     if barcode_input:
-    #         self.process_barcode(barcode_input)
-    #     self.ids.txt_barcode.text = ""
     def on_windows_keyboard_validate(self):
     
         barcode = self.ids.txt_barcode.text.strip()
@@ -455,40 +474,45 @@ class StockCountScreen(MDScreen):
             self.play_sound(success=True)
 
         except Exception as e:
+            # BUGFIX: เดิม except นี้แค่ print(e) เฉยๆ แล้วปล่อยให้โค้ดไหลต่อไปเคลียร์
+            # ช่อง barcode เหมือนบันทึกสำเร็จ ทำให้ผู้ใช้ไม่รู้เลยว่าจริงๆ แล้ว
+            # "ข้อมูลไม่ถูกบันทึกลง DB" ตอนนี้จะแจ้งเตือนผู้ใช้ด้วย และหยุดไม่ทำต่อ
             print(f"Error Saving Scan: {e}")
+            self.play_sound(success=False)
+            MDApp.get_running_app().show_alert(
+                "❌ บันทึกไม่สำเร็จ",
+                f"เกิดข้อผิดพลาดขณะบันทึกข้อมูล กรุณาลองใหม่\n{e}"
+            )
+            self.reset_scan_field()
+            return
 
-        # เคลียร์ช่อง Barcode
-        self.ids.txt_barcode.text = ""
-        self.ids.txt_barcode.focus = True
+        # เคลียร์ช่อง Barcode และดึง cursor กลับไปพร้อมยิงครั้งถัดไปทันที
+        # BUGFIX: เดิมตั้ง focus = True แบบทันที (synchronous) ก่อน แล้วค่อยเรียก
+        # update_recent_list() ทีหลัง ซึ่งฟังก์ชันนั้น clear_widgets()/สร้าง list
+        # ใหม่ทั้งหมด ทำให้ widget tree เปลี่ยนและไป "แย่ง" focus คืนจาก txt_barcode
+        # โดยเฉพาะบน Android (CipherLab RK25 / Newland MT67) ทำให้ cursor ไม่กลับไป
+        # ที่ช่องบาร์โค้ดพร้อมสำหรับการยิงครั้งถัดไปจริง แก้โดย:
+        #   1. อัปเดตลิสต์ล่าสุดให้เสร็จก่อน (widget tree นิ่งแล้ว)
+        #   2. เคลียร์ข้อความ
+        #   3. ใช้ force_focus() ซึ่ง toggle focus False -> True ผ่าน Clock delay
+        #      (pattern เดียวกับที่ on_windows_keyboard_validate ใช้อยู่แล้ว)
         self.update_recent_list()
-        # บังคับคืน Cursor กลับช่อง Scan
-        
-    # def focus_barcode_after_scan(self, dt):
-    
-    #     txt = self.ids.txt_barcode
+        self.ids.txt_barcode.text = ""
+        Clock.schedule_once(lambda dt: self.force_focus(), 0.05)
 
-    #     txt.text = ""
+    def reset_scan_field(self):
+        # BUGFIX: เดิมฟังก์ชันนี้ถูกคอมเมนต์ทิ้งไว้ทั้งหมด แต่โค้ดด้านบนยังเรียก
+        # self.reset_scan_field() อยู่ 2 จุด (กรณีไม่กรอกตำแหน่ง/ผู้ตรวจนับ และกรณี
+        # ไม่พบสินค้า) ทำให้เกิด AttributeError แอปค้าง/พังทุกครั้งที่เจอ 2 เคสนี้
+        self.ids.txt_barcode.text = ""
+        self.ids.txt_barcode.focus = False
 
-    #     txt.focus = False
+        Clock.schedule_once(
+            lambda dt: setattr(self.ids.txt_barcode, "focus", True),
+            0.05
+        )
 
-    #     Window.release_keyboard()
-
-    #     Clock.schedule_once(
-    #         lambda dt: setattr(txt, "focus", True),
-    #         0.15
-    #     )
-    # def reset_scan_field(self):
-        
-    #     self.ids.txt_barcode.text = ""
-
-    #     self.ids.txt_barcode.focus = False
-
-    #     Clock.schedule_once(
-    #         lambda dt: setattr(self.ids.txt_barcode, "focus", True),
-    #         0.05
-    #     )
-
-    #     self.update_recent_list()
+        self.update_recent_list()
 
     def update_recent_list(self):
         self.ids.list_recent_scans.clear_widgets()
@@ -541,7 +565,13 @@ class StockCountScreen(MDScreen):
             )
 
         except Exception as e:
+            # BUGFIX: เดิม except นี้แค่ print(e) แล้วปิด dialog ต่อเหมือนบันทึกสำเร็จ
+            # ทำให้ผู้ใช้ไม่รู้ว่าการแก้ไขจำนวนไม่ถูกบันทึกจริง เพิ่ม alert แจ้งเตือน
             print(f"Error Editing Qty: {e}")
+            self.edit_dialog.dismiss()
+            MDApp.get_running_app().show_alert("❌ Error", f"ไม่สามารถบันทึกจำนวนที่แก้ไข: {e}")
+            self.update_recent_list()
+            return
             
         self.edit_dialog.dismiss()
         self.update_recent_list()
@@ -701,7 +731,7 @@ def create_android_receiver(callback):
                     barcode = intent.getStringExtra(key)
                     if barcode:
                         break
-                except:
+                except Exception:
                     pass
 
             if barcode:
