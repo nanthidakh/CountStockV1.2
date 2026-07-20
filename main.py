@@ -48,9 +48,6 @@ CUR_DIR = os.path.dirname(__file__) if __file__ in locals() else os.getcwd()
 class InventoryApp(MDApp):
     dialog = None
     version = StringProperty(APP_VERSION)
-    def release_kb(self):
-        if platform == 'android':
-            Window.release_keyboard()
     def build(self):
         if platform == 'android':
             from jnius import autoclass
@@ -462,41 +459,36 @@ class StockCountScreen(MDScreen):
 
         # เคลียร์ช่อง Barcode
         self.ids.txt_barcode.text = ""
-
+        self.ids.txt_barcode.focus = True
+        self.update_recent_list()
         # บังคับคืน Cursor กลับช่อง Scan
-        Clock.schedule_once(
-            self.focus_barcode_after_scan,
-            0.1
-        )
-
-        self.update_recent_list()
         
-    def focus_barcode_after_scan(self, dt):
+    # def focus_barcode_after_scan(self, dt):
     
-        txt = self.ids.txt_barcode
+    #     txt = self.ids.txt_barcode
 
-        txt.text = ""
+    #     txt.text = ""
 
-        txt.focus = False
+    #     txt.focus = False
 
-        Window.release_keyboard()
+    #     Window.release_keyboard()
 
-        Clock.schedule_once(
-            lambda dt: setattr(txt, "focus", True),
-            0.15
-        )
-    def reset_scan_field(self):
+    #     Clock.schedule_once(
+    #         lambda dt: setattr(txt, "focus", True),
+    #         0.15
+    #     )
+    # def reset_scan_field(self):
         
-        self.ids.txt_barcode.text = ""
+    #     self.ids.txt_barcode.text = ""
 
-        self.ids.txt_barcode.focus = False
+    #     self.ids.txt_barcode.focus = False
 
-        Clock.schedule_once(
-            lambda dt: setattr(self.ids.txt_barcode, "focus", True),
-            0.05
-        )
+    #     Clock.schedule_once(
+    #         lambda dt: setattr(self.ids.txt_barcode, "focus", True),
+    #         0.05
+    #     )
 
-        self.update_recent_list()
+    #     self.update_recent_list()
 
     def update_recent_list(self):
         self.ids.list_recent_scans.clear_widgets()
