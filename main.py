@@ -301,7 +301,6 @@ class StockCountScreen(MDScreen):
             return
 
         try:
-
             PythonActivity = autoclass("org.kivy.android.PythonActivity")
             IntentFilter = autoclass("android.content.IntentFilter")
 
@@ -312,23 +311,8 @@ class StockCountScreen(MDScreen):
             activity = PythonActivity.mActivity
 
             actions = [
-
-                # CipherLab
-                "com.cipherlab.barcode.queue",
-
-                # Newland
-                "nlscan.action.SCANNER_RESULT",
-
-                # Zebra DataWedge
-                "com.symbol.datawedge.api.RESULT_ACTION",
-                "com.symbol.datawedge.data_string",
-
-                # Honeywell
-                "com.honeywell.decode.intent.action.EDIT_DATA",
-
-                # Urovo
-                "android.intent.ACTION_DECODE_DATA"
-
+                "nlscan.action.SCANNER_RESULT",      # Newland
+                "com.cipherlab.barcode.queue"        # CipherLab
             ]
 
             for action in actions:
@@ -340,7 +324,7 @@ class StockCountScreen(MDScreen):
             print("Scanner Receiver Ready")
 
         except Exception as e:
-            print("Scanner Error:", e)
+            print(e)
 
     def stop_android_scanner(self):
         """ปิดระบบดักจับเมื่อออกจากหน้าสแกน"""
@@ -384,8 +368,7 @@ class StockCountScreen(MDScreen):
 
     def on_android_barcode_received(self, barcode_str):
         """รับค่าบาร์โค้ดจากหัวอ่าน CipherLab ส่งมาทำงานต่อ"""
-        if barcode_str:
-            self.process_barcode(barcode_str.strip())
+        self.process_barcode(barcode_str)
 
     # def on_windows_keyboard_validate(self):
     #     """รับค่าจากแป้นพิมพ์ (สำหรับเปิดทดสอบบนคอมพิวเตอร์)"""
@@ -477,32 +460,39 @@ class StockCountScreen(MDScreen):
         except Exception as e:
             print(f"Error Saving Scan: {e}")
 
-        # 6. เคลียร์ช่องและค้าง Cursor พร้อมยิงต่อ
+        # เคลียร์ช่อง Barcode
         self.ids.txt_barcode.text = ""
 
-        Clock.schedule_once(self.focus_barcode_after_scan, 0.10)
+        # บังคับคืน Cursor กลับช่อง Scan
+        Clock.schedule_once(
+            self.focus_barcode_after_scan,
+            0.1
+        )
 
         self.update_recent_list()
+        
     def focus_barcode_after_scan(self, dt):
     
         txt = self.ids.txt_barcode
+
+        txt.text = ""
 
         txt.focus = False
 
         Window.release_keyboard()
 
-        def do_focus(dt):
-
-            txt.focus = True
-            txt.cursor = (0, 0)
-
-        Clock.schedule_once(do_focus, 0.05)
+        Clock.schedule_once(
+            lambda dt: setattr(txt, "focus", True),
+            0.15
+        )
     def reset_scan_field(self):
         
         self.ids.txt_barcode.text = ""
 
+        self.ids.txt_barcode.focus = False
+
         Clock.schedule_once(
-            lambda dt: self.force_focus(),
+            lambda dt: setattr(self.ids.txt_barcode, "focus", True),
             0.05
         )
 
@@ -684,11 +674,8 @@ def create_android_receiver(callback):
 
     class AndroidBarcodeReceiver(PythonJavaClass):
 
-        __javainterfaces__ = [
-            "android/content/BroadcastReceiver"
-        ]
-
-        __javacontext__ = "app"
+        __javainterfaces__ = ['android/content/BroadcastReceiver']
+        __javacontext__ = 'app'
 
         def __init__(self, cb):
             super().__init__()
@@ -701,42 +688,31 @@ def create_android_receiver(callback):
 
             keys = [
 
-                # CipherLab
-                "com.cipherlab.barcode.queue_string",
-
                 # Newland
                 "SCAN_BARCODE1",
                 "scan_result",
 
-                # Zebra
-                "com.symbol.datawedge.data_string",
+                # CipherLab
+                "com.cipherlab.barcode.queue_string",
 
-                # Honeywell
-                "barcode_data",
-
-                # Urovo
+                # Generic
+                "barcode",
                 "barcode_string",
                 "decode_data",
                 "scannerdata",
-
-                # Generic
                 "data"
 
             ]
 
             for key in keys:
-
                 try:
                     barcode = intent.getStringExtra(key)
-
                     if barcode:
                         break
-
                 except:
                     pass
 
             if barcode:
-
                 Clock.schedule_once(
                     lambda dt: self.cb(barcode.strip()),
                     0

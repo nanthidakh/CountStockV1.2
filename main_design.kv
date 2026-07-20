@@ -268,7 +268,7 @@ ScreenManager:
             # ช่องสแกน (เน้นชัดเจน)
             MDTextField:
                 id: txt_barcode
-                hint_text: "ScanBarcode Here"
+                hint_text: "Scan Barcode Here"
                 font_name: "ThaiFont"
                 mode: "rectangle"
                 multiline: False
@@ -276,10 +276,11 @@ ScreenManager:
                 height: "30dp"
                 readonly: False
                 keyboard_suggestions: False
-                focus: True
                 use_handles: False
-                # แก้ไขการเรียกซ้ำซ้อน
-                on_text_validate: root.on_barcode_scan()
+                write_tab: False
+
+                on_text_validate:
+                    root.on_barcode_scan()
             
             # ส่วนแสดงสินค้า
             MDCard:
