@@ -286,8 +286,16 @@ ScreenManager:
                 keyboard_suggestions: False
                 use_handles: False
                 write_tab: False
+                # BUGFIX: เดิมเคยตั้ง keyboard_mode: 'managed' ไว้เพื่อกันคีย์บอร์ด
+                # Android เด้ง แต่ managed ไปปิดกลไกที่เปิด SDL text-input mode ด้วย
+                # (ปกติ widget โหมด 'auto' จะเปิด text-input mode ให้เองตอน focus)
+                # ผลคือ Window.on_textinput ไม่ทำงานเลยแม้แต่บน PC (พิมพ์เข้าช่อง
+                # นี้ไม่ขึ้นอะไรเลย) จึงเอาออก กลับไปใช้ 'auto' (ค่า default)
+                # สาเหตุคีย์บอร์ดเด้งไม่เสถียรตัวจริงคือ Window.release_keyboard()
+                # ใน force_focus() ที่ไปชนกับการ toggle focus ซึ่งตัดออกไปแล้ว
+                # ในไฟล์ main.py ตั้งแต่รอบก่อนหน้า ไม่ใช่การเปิดคีย์บอร์ดเฉยๆ
 
-                on_text_validate:root.on_barcode_input()
+                on_text_validate: root.on_barcode_input()
             
             # ส่วนแสดงสินค้า
             MDCard:
@@ -324,26 +332,45 @@ ScreenManager:
 
 <ExportScreen>:
     name: 'export_screen'
+
     MDBoxLayout:
         orientation: 'vertical'
         md_bg_color: 0.98, 0.98, 0.98, 1
 
-        MDTopAppBar:
-            title: "4. Export Data"
-            font_name: "ThaiFont"
-            elevation: 2
-            md_bg_color: 0.1, 0.5, 0.8, 1
-        MDFlatButton:
-            text: "กลับ"
-            font_name: "ThaiFont"
-            font_size: "12sp"  # ปรับขนาดให้เล็กลงได้ตามต้องการ
-            pos_hint: {"center_y": .95} # ปรับตำแหน่งให้ตรงกับแถบด้านบน
-            on_release: root.go_back()    
+        # ================= Header =================
         MDBoxLayout:
-            orientation: 'vertical'
+            size_hint_y: None
+            height: "56dp"
+            md_bg_color: 0.1, 0.5, 0.8, 1
+
+            MDFlatButton:
+                text: "กลับ"
+                font_name: "ThaiFont"
+                theme_text_color: "Custom"
+                text_color: 1, 1, 1, 1
+                size_hint_x: None
+                width: "80dp"
+                on_release: root.go_back()
+
+            MDLabel:
+                text: "4. Export Data"
+                font_name: "ThaiFont"
+                halign: "center"
+                theme_text_color: "Custom"
+                text_color: 1, 1, 1, 1
+
+            Widget:
+                size_hint_x: None
+                width: "80dp"
+
+        # ================= Body =================
+        MDBoxLayout:
+            orientation: "vertical"
             padding: "25dp"
             spacing: "20dp"
-            
+
+            Widget:
+
             MDLabel:
                 text: "กรุณาเลือกการส่งออกข้อมูล"
                 font_name: "ThaiFont"
@@ -351,36 +378,34 @@ ScreenManager:
                 theme_text_color: "Secondary"
                 size_hint_y: None
                 height: self.texture_size[1]
-                
-            Widget:
-                size_hint_y: None
-                height: "20dp"
 
             MDRaisedButton:
-                text: "ส่งออกเป็น เก็บข้อมูล\n(Countstock_scan_data)" # ใช้ \n เพื่อบังคับขึ้นบรรทัดใหม่
+                text: "ส่งออกเป็น เก็บข้อมูล\n(Countstock_scan_data)"
                 font_name: "ThaiFont"
-                size_hint: (1, None)
-                height: "80dp"  # เพิ่มความสูงขึ้นเล็กน้อยเพื่อให้พอดีกับ 2 บรรทัด
+                size_hint: (0.9, None)
+                pos_hint: {"center_x": 0.5}
+                height: "80dp"
                 md_bg_color: 0.9, 0.5, 0.1, 1
                 on_release: root.export_data("Countstock_scan_data")
-                
-                # เพิ่มบรรทัดเหล่านี้เพื่อให้ข้อความตัดบรรทัดได้:
 
             MDRaisedButton:
                 text: "ส่งออกเป็นขอ Slottag\n(Countstock_scan_slottag)"
                 font_name: "ThaiFont"
-                size_hint: (1, None)
+                size_hint: (0.9, None)
+                pos_hint: {"center_x": 0.5}
                 height: "80dp"
                 md_bg_color: 0.1, 0.5, 0.8, 1
                 on_release: root.export_data("Countstock_scan_slottag")
-             
-            Widget: # Spacer
-            
-            # ปุ่มลบข้อมูล
+
+            Widget:
+
             MDRaisedButton:
                 text: "ล้างข้อมูลการสแกนทั้งหมด"
                 font_name: "ThaiFont"
-                size_hint: (1, None)
+                size_hint: (0.9, None)
+                pos_hint: {"center_x": 0.5}
                 height: "50dp"
-                md_bg_color: 0.8, 0.2, 0.2, 1 # สีแดง
-                on_release: root.show_confirm_clear_dialog() # เรียก Dialog ยืนยันก่อน
+                md_bg_color: 0.8, 0.2, 0.2, 1
+                on_release: root.show_confirm_clear_dialog()
+
+            Widget:

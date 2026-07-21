@@ -1,7 +1,6 @@
 # ไฟล์: main.py
 import os
 import sys
-from database import get_connection
 import requests  # ใช้แทน pyodbc สำหรับการสื่อสารผ่าน Network
 import threading
 from kivy.clock import Clock
@@ -149,40 +148,81 @@ class ConfigScreen(MDScreen):
             'iis_server_ip': config[6]
         }
     def fetch_config_from_iis(self):
-        """1. ดึงข้อมูลจาก IIS"""
+        """ดึงข้อมูล Config จาก IIS และแสดงรายการสาขา"""
+
         iis_ip = self.ids.txt_iis_ip.text.strip()
+
         if not iis_ip:
             MDApp.get_running_app().show_alert("⚠️", "กรุณากรอก IP ของ IIS ก่อน")
             return
-        
+
+        # ปิด Dropdown เดิมก่อน (ถ้ามี)
+        if self.menu:
+            try:
+                self.menu.dismiss()
+            except Exception:
+                pass
+            self.menu = None
+
         try:
             url = f"http://{iis_ip}/API_HWK_CountStock_Data/get_config.ashx"
+
             response = requests.get(url, timeout=10)
-            data = response.json() # คาดหวัง List of Dictionaries
-            
-            # สร้างเมนู dropdown
-            menu_items = [
-                {"text": item['branch_name'], "viewclass": "OneLineListItem", "on_release": lambda x=item: self.select_branch(x)}
-                for item in data
-            ]
-            
-            self.menu = MDDropdownMenu(caller=self.ids.drop_branch, items=menu_items, width_mult=4)
+            response.raise_for_status()
+
+            data = response.json()
+
+            if not data:
+                MDApp.get_running_app().show_alert("⚠️", "ไม่พบข้อมูล Config")
+                return
+
+            menu_items = []
+
+            for item in data:
+                menu_items.append(
+                    {
+                        "text": item["branch_name"],
+                        "viewclass": "OneLineListItem",
+                        "on_release": lambda x=item: self.select_branch(x)
+                    }
+                )
+
+            self.menu = MDDropdownMenu(
+                caller=self.ids.drop_branch,
+                items=menu_items,
+                width_mult=4
+            )
+
             self.menu.open()
+
+        except requests.exceptions.RequestException as e:
+            MDApp.get_running_app().show_alert(
+                "❌ Error",
+                f"ไม่สามารถเชื่อมต่อ Server ได้\n{e}"
+            )
+
         except Exception as e:
-            MDApp.get_running_app().show_alert("❌ Error", f"ไม่สามารถดึง Config: {e}")
+            MDApp.get_running_app().show_alert(
+                "❌ Error",
+                f"ไม่สามารถดึง Config\n{e}"
+        )
 
     def select_branch(self, item):
-        """2. เมื่อเลือกสาขาแล้ว อัปเดต Label และเก็บค่าลงตัวแปร"""
+        """เมื่อเลือกสาขา"""
         self.current_selected_config = item
-        self.ids.drop_branch.text = item['branch_name']
-        
-        # อัปเดต Label แสดงผล
+
+        self.ids.drop_branch.text = item["branch_name"]
+
         self.ids.lbl_branch_name.text = f"สาขา: {item['branch_name']}"
         self.ids.lbl_db_ip.text = f"DB Server IP: {item['db_server_ip']}"
         self.ids.lbl_db_name.text = f"DB Name: {item['db_name']}"
         self.ids.lbl_month.text = f"เดือน: {item['count_month']}"
-        
-        self.menu.dismiss()
+
+        if self.menu:
+            try:
+                self.menu.dismiss()
+            except Exception:
+                pass
 
     def save_data(self):
         """3. บันทึกลง SQLite"""
@@ -195,7 +235,7 @@ class ConfigScreen(MDScreen):
             # ดึงค่าจากตัวแปร current_selected_config
             save_config(
                 c['branch_name'], c['db_server_ip'], c['db_name'], 
-                c['db_user'], c['db_password'], c['count_month'], c['iis_server_ip']
+                c['db_user'], c['db_password'], c['count_month'], self.ids.txt_iis_ip.text.strip()
             )
             MDApp.get_running_app().show_alert("✓ สำเร็จ", "บันทึกค่าลงฐานข้อมูลเรียบร้อยแล้ว")
         except Exception as e:
@@ -261,48 +301,48 @@ class ImportScreen(MDScreen):
 class StockCountScreen(MDScreen):
     edit_dialog = None
     edit_text_field = None
-    
+
     def on_enter(self):
- 
         Clock.schedule_once(
             lambda dt: self.force_focus(),
             0.3
         )
 
         self.update_recent_list()
-        
-    def release_kb(self):
-        if platform == 'android':
-            Window.release_keyboard()
+
     def go_back(self):
         self.stop_android_scanner()
         self.manager.current = 'menu_screen'
-        
-    def set_barcode_focus(self):
-        
-        self.ids.txt_barcode.focus = False
-
-        Clock.schedule_once(
-            lambda dt: self.force_focus(),
-            0.2
-        )
-
 
     def force_focus(self):
-    
+        # BUGFIX: เดิมตรงนี้เคยเรียก Window.release_keyboard() ต่อท้ายด้วย ทำให้
+        # เกิดวงจรเปิด-ปิด soft keyboard ซ้อนกับการ toggle focus False->True
+        # วงจรนี้ไม่เสถียรบนเครื่อง Newland จริง ทำให้ตัวอักษรที่ scanner ยิงเข้ามา
+        # หลุดหายบางส่วน และ widget เสีย focus ไปเฉยๆ (cursor ไม่กลับมาที่ช่องยิง)
+        # ตัด Window.release_keyboard() ออก เหลือแค่ toggle focus เฉยๆ ก็พอ
         self.ids.txt_barcode.focus = False
 
         def do_focus(dt):
-
             self.ids.txt_barcode.focus = True
 
-            if platform == "android":
-                try:
-                    Window.release_keyboard()
-                except:
-                    pass
+        Clock.schedule_once(do_focus, 0.1)
 
-        Clock.schedule_once(do_focus,0.1)
+    def on_barcode_input(self):
+        barcode = self.ids.txt_barcode.text.strip()
+
+        if not barcode:
+            return
+
+        print("TEXTFIELD BARCODE =", barcode)
+
+        self.process_barcode(barcode)
+
+        self.ids.txt_barcode.text = ""
+
+        Clock.schedule_once(
+            lambda dt: self.force_focus(),
+            0.05
+        )
 
     '''  def start_android_scanner(self):
 
@@ -395,30 +435,10 @@ class StockCountScreen(MDScreen):
         print("SCAN RECEIVE =", barcode_str)
         self.process_barcode(barcode_str)
 
-    def on_barcode_input(self):
-    
-        barcode = self.ids.txt_barcode.text.strip()
-
-        if not barcode:
-            return
-
-        print("TEXTFIELD BARCODE =", barcode)
-
-        self.process_barcode(barcode)
-
-        self.ids.txt_barcode.text = ""
-
-        Clock.schedule_once(
-            lambda dt: self.force_focus(),
-            0.05
-        )
-    def on_barcode_scan(self):
-        """รองรับการเรียกใช้งานจากไฟล์ main_design.kv เมื่อกด Enter"""
-        self.on_windows_keyboard_validate()
-    def process_barcode(self, barcode_input):
+    def process_barcode(self, barcode):
         """ฟังก์ชันหลักในการตรวจสอบและบันทึกข้อมูล"""
-        print("PROCESS =", barcode_input)
-        barcode_input = barcode_input.strip()
+        print("PROCESS =", barcode)
+        barcode_input = barcode.strip()
         location = self.ids.txt_location.text.strip()
         staff = self.ids.txt_staff.text.strip()
         
@@ -528,15 +548,16 @@ class StockCountScreen(MDScreen):
         recent_data = get_recent_scans_from_table(limit=5)
         for row in recent_data:
             b_code = row[0]
-            p_name = row[1] if row[1] else "ไม่ทราบชื่อสินค้า"
+            p_name = row[1] if row[1] else "Barcode ไม่ถูกต้อง สแกนรหัสสินค้าแทนแล้ว"
             quantity = row[2]
             s_date = row[3] if row[3] else "-"
+            location=row[4]
             
             item_text = f"{p_name} (จำนวน: {quantity}) ✏️"
             item_secondary = f"บาร์โค้ด: {b_code} | เวลาสแกน: {s_date}"
             
             list_item = Factory.ThaiTwoLineListItem(text=item_text, secondary_text=item_secondary)
-            list_item.bind(on_release=lambda x, b=b_code, q=quantity, l=row[4], n=p_name: self.open_edit_dialog(b, q, l, n))
+            list_item.bind(on_release=lambda x, b=b_code, q=quantity, l=location, n=p_name: self.open_edit_dialog(b, q, l, n))
             self.ids.list_recent_scans.add_widget(list_item)
 
     def open_edit_dialog(self, barcode, current_qty, location, product_name):
