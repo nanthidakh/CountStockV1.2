@@ -93,25 +93,25 @@ class InventoryApp(MDApp):
         kv_path = os.path.join(CUR_DIR, "main_design.kv")
         return Builder.load_file(kv_path)
 
-def show_alert(self, title, text, on_dismiss=None):
-        if self.dialog:
-            self.dialog.dismiss()
+    def show_alert(self, title, text, on_dismiss=None):
+            if self.dialog:
+                self.dialog.dismiss()
 
-        def _close(x):
-            self.dialog.dismiss()
-            if on_dismiss:
-                on_dismiss()
+            def _close(x):
+                self.dialog.dismiss()
+                if on_dismiss:
+                    on_dismiss()
 
-        self.dialog = MDDialog(
-            title=title,
-            text=text,
-            buttons=[MDRaisedButton(text="ตกลง", font_name="ThaiFont", on_release=_close)]
-        )
-        self.dialog.open()
+            self.dialog = MDDialog(
+                title=title,
+                text=text,
+                buttons=[MDRaisedButton(text="ตกลง", font_name="ThaiFont", on_release=_close)]
+            )
+            self.dialog.open()
 
 class MainMenuScreen(MDScreen):
     def exit_app(self):
-        sys.exit(0)
+        MDApp.get_running_app().stop()
 
 class ConfigScreen(MDScreen):
     def go_back(self):
@@ -308,88 +308,115 @@ class StockCountScreen(MDScreen):
     edit_text_field = None
 
     def on_enter(self):
+        
+        self.update_recent_list()
+    
         Clock.schedule_once(
             lambda dt: self.force_focus(),
             0.3
         )
 
-        self.update_recent_list()
 
     def go_back(self):
         self.stop_android_scanner()
         self.manager.current = 'menu_screen'
 
-    def force_focus(self):
-        # BUGFIX: เดิมตรงนี้เคยเรียก Window.release_keyboard() ต่อท้ายด้วย ทำให้
-        # เกิดวงจรเปิด-ปิด soft keyboard ซ้อนกับการ toggle focus False->True
-        # วงจรนี้ไม่เสถียรบนเครื่อง Newland จริง ทำให้ตัวอักษรที่ scanner ยิงเข้ามา
-        # หลุดหายบางส่วน และ widget เสีย focus ไปเฉยๆ (cursor ไม่กลับมาที่ช่องยิง)
-        # ตัด Window.release_keyboard() ออก เหลือแค่ toggle focus เฉยๆ ก็พอ
-        self.ids.txt_barcode.focus = False
-
-        def do_focus(dt):
-            self.ids.txt_barcode.focus = True
-
-        Clock.schedule_once(do_focus, 0.1)
+    
+        
 
     def on_barcode_input(self):
         barcode = self.ids.txt_barcode.text.strip()
 
+
         if not barcode:
             return
 
+
         print("TEXTFIELD BARCODE =", barcode)
 
-        self.process_barcode(barcode)
 
+        # เคลียร์ก่อน เพื่อป้องกัน Scanner ยิงซ้ำ
         self.ids.txt_barcode.text = ""
 
+
+        # ประมวลผลสินค้า
+        self.process_barcode(barcode)
+
+
+        # รอให้ UI update เสร็จแล้วคืน Focus
         Clock.schedule_once(
             lambda dt: self.force_focus(),
-            0.05
+            0.2
         )
 
-    '''  def start_android_scanner(self):
+    # def start_android_scanner(self):
+    
+    #     if platform != "android":
+    #         return
 
-        if platform != "android":
-            return
+    #     if hasattr(self, "receiver"):
+    #         return
 
-        if hasattr(self, "receiver"):
-            return
+        # try:
 
-        try:
-            PythonActivity = autoclass("org.kivy.android.PythonActivity")
-            IntentFilter = autoclass("android.content.IntentFilter")
+        #     receiver = create_android_receiver(
+        #         self.on_android_barcode_received
+        #     )
 
-            receiver = create_android_receiver(
-                self.on_android_barcode_received
-            )
+        #     if receiver is None:
+        #         return
 
-            activity = PythonActivity.mActivity
 
-            actions = [
-                "nlscan.action.SCANNER_RESULT",      # Newland
-                "com.cipherlab.barcode.queue"        # CipherLab
-            ]
+        #     PythonActivity = autoclass(
+        #         "org.kivy.android.PythonActivity"
+        #     )
 
-            # BUGFIX: เดิมตั้ง self.receiver ก่อนวน registerReceiver ถ้าตัวใดตัวหนึ่ง
-            # ลงทะเบียนไม่สำเร็จ (exception) hasattr(self, "receiver") ด้านบนจะ True
-            # อยู่ดี ทำให้ครั้งต่อไปที่เข้าหน้านี้จะไม่พยายามลงทะเบียนซ้ำอีกเลย
-            registered_any = False
-            for action in actions:
-                try:
-                    activity.registerReceiver(receiver, IntentFilter(action))
-                    registered_any = True
-                except Exception as reg_err:
-                    print(f"Register {action} failed: {reg_err}")
+        #     IntentFilter = autoclass(
+        #         "android.content.IntentFilter"
+        #     )
 
-            if registered_any:
-                self.receiver = receiver
-                print("Scanner Receiver Ready")
 
-        except Exception as e:
-            print(e)
-    ''' 
+        #     activity = PythonActivity.mActivity
+
+
+        #     actions = [
+        #         "nlscan.action.SCANNER_RESULT",
+        #         "com.cipherlab.barcode.queue"
+        #     ]
+
+
+        #     registered = False
+
+
+        #     for action in actions:
+
+        #         try:
+
+        #             activity.registerReceiver(
+        #                 receiver,
+        #                 IntentFilter(action)
+        #             )
+
+        #             registered = True
+
+        #         except Exception as e:
+
+        #             print(
+        #                 f"Register {action} failed : {e}"
+        #             )
+
+
+        #     if registered:
+
+        #         self.receiver = receiver
+        #         print("Scanner Receiver Ready")
+
+
+        # except Exception as e:
+
+        #     print(
+        #         f"Scanner Start Error : {e}"
+        # )
     def stop_android_scanner(self):
     
         """ปิดระบบดักจับเมื่อออกจากหน้าสแกน"""
@@ -528,23 +555,42 @@ class StockCountScreen(MDScreen):
         #   2. เคลียร์ข้อความ
         #   3. ใช้ force_focus() ซึ่ง toggle focus False -> True ผ่าน Clock delay
         #      (pattern เดียวกับที่ on_windows_keyboard_validate ใช้อยู่แล้ว)
-        self.ids.txt_barcode.text = ""
+        #self.ids.txt_barcode.text = ""
+
         self.update_recent_list()
 
+        Clock.schedule_once(
+            lambda dt:self.force_focus(),
+            0.2
+        )
 
+    def force_focus(self):
+    
+        barcode = self.ids.txt_barcode
+
+        barcode.focus = False
+
+        Clock.schedule_once(
+            lambda dt: setattr(
+                barcode,
+                "focus",
+                True
+            ),
+            0.1
+        )
     def reset_scan_field(self):
         # BUGFIX: เดิมฟังก์ชันนี้ถูกคอมเมนต์ทิ้งไว้ทั้งหมด แต่โค้ดด้านบนยังเรียก
         # self.reset_scan_field() อยู่ 2 จุด (กรณีไม่กรอกตำแหน่ง/ผู้ตรวจนับ และกรณี
         # ไม่พบสินค้า) ทำให้เกิด AttributeError แอปค้าง/พังทุกครั้งที่เจอ 2 เคสนี้
         self.ids.txt_barcode.text = ""
-        self.ids.txt_barcode.focus = False
+        #self.ids.txt_barcode.focus = False
 
         Clock.schedule_once(
             lambda dt: setattr(self.ids.txt_barcode, "focus", True),
-            0.05
+            0.1
         )
 
-        self.update_recent_list()
+        #self.update_recent_list()
 
     def update_recent_list(self):
         self.ids.list_recent_scans.clear_widgets()
@@ -611,63 +657,154 @@ class StockCountScreen(MDScreen):
 
 class ExportScreen(MDScreen):
     confirm_clear_dialog = None
-
+    exporting = False
     def go_back(self):
         self.manager.current = 'menu_screen'
 
     def export_data(self, target_server_table):
-        config = get_config()
-        if not config:
-            MDApp.get_running_app().show_alert("❌ ข้อผิดพลาด", "ไม่พบข้อมูลการตั้งค่า")
-            return
-            
-        iis_ip = config[6] # ดึงเฉพาะ IP ของ Server
-        db_name = config[2]    # ชื่อ Database ที่ตั้งค่าไว้ในหน้าจอ Config
-        
-        # ดึงข้อมูลจาก SQLite ในเครื่อง
-        rows = get_export_rows()
-        #lite_conn.close()
-        
-        if not rows:
-            MDApp.get_running_app().show_alert("⚠️ ไม่มีข้อมูล", "ไม่พบรายการค้างส่ง")
+    
+        if self.exporting:
             return
 
-        # แปลงข้อมูลเป็น List of Dictionaries เพื่อส่งผ่าน JSON
-        current_time = datetime.now().strftime('%Y/%m/%d')
-        data_to_send = [
-            {'location': r[0], 'staff': r[1], 'p_code': r[2], 'barcode': r[3], 'qty': r[4], 'date': r[5],'export_date': current_time} 
-            for r in rows
-        ]
-       
-        
-        payload = {
-        'table': target_server_table, 
-        'db_server_ip': config[1], # db_server_ip ที่ดึงมาจาก SQLite
-        'db_name': config[2], 
-        'data': data_to_send
-    }
-        # ส่งผ่าน API ไปที่ IIS ที่ไฟล์ Export.ashx
+        self.exporting = True
+
+
+        threading.Thread(
+            target=self._export_thread,
+            args=(target_server_table,),
+            daemon=True
+        ).start()
+
+
+    def _export_thread(self, target_server_table):
+
         try:
-            # ใช้ iis_ip ที่ดึงมาจากฐานข้อมูล
-            url = f"http://{iis_ip}/API_HWK_CountStock_Data/Export.ashx" 
-            
-            response = requests.post(url, json=payload, timeout=300)
-            
+
+            config = get_config()
+
+            if not config:
+                Clock.schedule_once(
+                    lambda dt: MDApp.get_running_app().show_alert(
+                        "❌ ข้อผิดพลาด",
+                        "ไม่พบข้อมูลการตั้งค่า"
+                    )
+                )
+                return
+
+
+            iis_ip = config[6]
+
+
+            # ดึงข้อมูลจาก SQLite
+            rows = get_export_rows()
+
+
+            if not rows:
+                Clock.schedule_once(
+                    lambda dt: MDApp.get_running_app().show_alert(
+                        "⚠️ ไม่มีข้อมูล",
+                        "ไม่พบรายการค้างส่ง"
+                    )
+                )
+                return
+
+
+            current_time = datetime.now().strftime('%Y/%m/%d')
+
+
+            data_to_send = [
+                {
+                    'location': r[0],
+                    'staff': r[1],
+                    'p_code': r[2],
+                    'barcode': r[3],
+                    'qty': r[4],
+                    'date': r[5],
+                    'export_date': current_time
+                }
+                for r in rows
+            ]
+
+
+            payload = {
+
+                'table': target_server_table,
+
+                'db_server_ip': config[1],
+
+                'db_name': config[2],
+
+                'data': data_to_send
+            }
+
+
+            url = (
+                f"http://{iis_ip}/API_HWK_CountStock_Data/Export.ashx"
+            )
+
+
+            response = requests.post(
+                url,
+                json=payload,
+                timeout=300
+            )
+
+
             if response.status_code == 200:
-                self.show_export_success_dialog(target_server_table, len(rows))
+
+
+                Clock.schedule_once(
+                    lambda dt:
+                    self.show_export_success_dialog(
+                        target_server_table,
+                        len(rows)
+                    )
+                )
+
+
             else:
-                 # เพิ่มการตรวจจับข้อความ Error ที่เราส่งมาจาก C#
+
+
                 error_msg = response.text
+
+
                 if "SQL_ERROR:" in error_msg:
-                    # ตัดเอาเฉพาะข้อความหลัง SQL_ERROR: มาโชว์
-                    clean_msg = error_msg.split("SQL_ERROR:")[1].strip()
-                    MDApp.get_running_app().show_alert("❌ Server Error", clean_msg)
+
+                    clean_msg = (
+                        error_msg
+                        .split("SQL_ERROR:")[1]
+                        .strip()
+                    )
+
                 else:
-                    # ถ้าไม่ใช่ Error จาก SQL ให้โชว์ Error ปกติ
-                    MDApp.get_running_app().show_alert("❌ ส่งออกล้มเหลว", "เกิดข้อผิดพลาดที่ Server")
+
+                    clean_msg = (
+                        "เกิดข้อผิดพลาดที่ Server"
+                    )
+
+
+                Clock.schedule_once(
+                    lambda dt:
+                    MDApp.get_running_app().show_alert(
+                        "❌ ส่งออกล้มเหลว",
+                        clean_msg
+                    )
+                )
+
+
         except Exception as e:
-            MDApp.get_running_app().show_alert("❌ เชื่อมต่อไม่ได้", f"ตรวจสอบ IP Server ({iis_ip}): {e}")
-            
+
+            Clock.schedule_once(
+                lambda dt:
+                MDApp.get_running_app().show_alert(
+                    "❌ เชื่อมต่อไม่ได้",
+                    f"ตรวจสอบ IP Server\n{e}"
+                )
+            )
+
+        finally:
+
+            self.exporting = False  
     def show_export_success_dialog(self, table_name, record_count):
         btn_no = MDFlatButton(text="เก็บข้อมูลไว้ก่อน", font_name="ThaiFont")
         btn_yes = MDRaisedButton(text="ยืนยัน ลบข้อมูลในเครื่อง", font_name="ThaiFont", md_bg_color=[0.8, 0.2, 0.2, 1])
@@ -722,59 +859,59 @@ class ExportScreen(MDScreen):
         self.confirm_clear_dialog.open()
 
 # --- โครงสร้างเชื่อมต่อ Java Class สำหรับการทำงานแบบ Background Intent Receiver ---
-''' def create_android_receiver(callback):
+# def create_android_receiver(callback):
     
-    if platform != "android":
-        return None
+#         if platform != "android":
+#             return None
 
-    class AndroidBarcodeReceiver(PythonJavaClass):
+#         class AndroidBarcodeReceiver(PythonJavaClass):
 
-        __javainterfaces__ = ['android/content/BroadcastReceiver']
-        __javacontext__ = 'app'
+#             __javainterfaces__ = ['android/content/BroadcastReceiver']
+#             __javacontext__ = 'app'
 
-        def __init__(self, cb):
-            super().__init__()
-            self.cb = cb
+#             def __init__(self, cb):
+#                 super().__init__()
+#                 self.cb = cb
 
-        @java_method("(Landroid/content/Context;Landroid/content/Intent;)V")
-        def onReceive(self, context, intent):
+#             @java_method("(Landroid/content/Context;Landroid/content/Intent;)V")
+#             def onReceive(self, context, intent):
 
-            barcode = None
+#                 barcode = None
 
-            keys = [
+#                 keys = [
 
-                # Newland
-                "SCAN_BARCODE1",
-                "scan_result",
+#                         # Newland
+#                         "SCAN_BARCODE1",
+#                         "scan_result",
 
-                # CipherLab
-                "com.cipherlab.barcode.queue_string",
+#                         # CipherLab
+#                         "com.cipherlab.barcode.queue_string",
+#                         "com.cipherlab.barcode.data",
+#                         "barcode",
 
-                # Generic
-                "barcode",
-                "barcode_string",
-                "decode_data",
-                "scannerdata",
-                "data"
+#                         # Generic
+#                         "barcode_string",
+#                         "decode_data",
+#                         "scannerdata",
+#                         "data"
+#                     ]
 
-            ]
+#                 for key in keys:
+#                     try:
+#                         barcode = intent.getStringExtra(key)
+#                         if barcode:
+#                             break
+#                     except Exception:
+#                         pass
 
-            for key in keys:
-                try:
-                    barcode = intent.getStringExtra(key)
-                    if barcode:
-                        break
-                except Exception:
-                    pass
+#                 if barcode:
+#                     Clock.schedule_once(
+#                         lambda dt: self.cb(barcode.strip()),
+#                         0
+#                     )
 
-            if barcode:
-                Clock.schedule_once(
-                    lambda dt: self.cb(barcode.strip()),
-                    0
-                )
-
-    return AndroidBarcodeReceiver(callback)
- '''
+#         return AndroidBarcodeReceiver(callback)
+     
     
 if __name__ == "__main__":
     Window.size = (380, 680)
