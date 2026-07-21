@@ -93,14 +93,19 @@ class InventoryApp(MDApp):
         kv_path = os.path.join(CUR_DIR, "main_design.kv")
         return Builder.load_file(kv_path)
 
-    def show_alert(self, title, text):
+def show_alert(self, title, text, on_dismiss=None):
         if self.dialog:
             self.dialog.dismiss()
+
+        def _close(x):
+            self.dialog.dismiss()
+            if on_dismiss:
+                on_dismiss()
 
         self.dialog = MDDialog(
             title=title,
             text=text,
-            buttons=[MDRaisedButton(text="ตกลง", font_name="ThaiFont", on_release=lambda x: self.dialog.dismiss())]
+            buttons=[MDRaisedButton(text="ตกลง", font_name="ThaiFont", on_release=_close)]
         )
         self.dialog.open()
 
