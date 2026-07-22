@@ -94,20 +94,47 @@ class InventoryApp(MDApp):
         return Builder.load_file(kv_path)
 
     def show_alert(self, title, text, on_dismiss=None):
-            if self.dialog:
+    
+        if self.dialog:
+            try:
                 self.dialog.dismiss()
+            except Exception:
+                pass
 
-            def _close(x):
-                self.dialog.dismiss()
-                if on_dismiss:
-                    on_dismiss()
+            self.dialog = None
 
-            self.dialog = MDDialog(
-                title=title,
-                text=text,
-                buttons=[MDRaisedButton(text="ตกลง", font_name="ThaiFont", on_release=_close)]
-            )
-            self.dialog.open()
+
+        def _close(x):
+
+            dialog = self.dialog
+
+            if dialog:
+                dialog.dismiss()
+
+            self.dialog = None
+
+
+            if on_dismiss:
+
+                Clock.schedule_once(
+                    lambda dt: on_dismiss(),
+                    0.1
+                )
+
+
+        self.dialog = MDDialog(
+            title=title,
+            text=text,
+            buttons=[
+                MDRaisedButton(
+                    text="ตกลง",
+                    font_name="ThaiFont",
+                    on_release=_close
+                )
+            ]
+        )
+
+        self.dialog.open()
 
 class MainMenuScreen(MDScreen):
     def exit_app(self):
@@ -570,12 +597,19 @@ class StockCountScreen(MDScreen):
 
         barcode.focus = False
 
+
+        def set_focus(dt):
+
+            barcode.focus = True
+
+            print(
+                "BARCODE FOCUS =",
+                barcode.focus
+            )
+
+
         Clock.schedule_once(
-            lambda dt: setattr(
-                barcode,
-                "focus",
-                True
-            ),
+            set_focus,
             0.1
         )
     def reset_scan_field(self):
