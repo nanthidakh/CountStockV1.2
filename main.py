@@ -16,7 +16,7 @@ from kivymd.uix.button import MDRaisedButton, MDFlatButton
 from kivymd.uix.textfield import MDTextField
 from kivymd.uix.menu import MDDropdownMenu # อย่าลืมบรรทัดนี้ที่ด้านบน
 from kivy.properties import StringProperty
-
+from kivy.properties import BooleanProperty
 # รองรับระบบเสียงบน Android
 APP_VERSION = "1.2"
 if platform == 'android':
@@ -333,15 +333,57 @@ class ImportScreen(MDScreen):
 class StockCountScreen(MDScreen):
     edit_dialog = None
     edit_text_field = None
-
-    def on_enter(self):
-        
-        self.update_recent_list()
+    change_staff = BooleanProperty(False)
     
-        Clock.schedule_once(
-            lambda dt: self.force_focus(),
-            0.3
-        )
+    def on_staff_enter(self):
+        self.reset_staff_checkbox()
+        self.ids.txt_barcode.focus = True
+    def on_location_enter(self):
+        
+        # ถ้าต้องการเปลี่ยน Staff
+        if self.change_staff:
+            self.ids.txt_staff.text = ""      # ล้างค่าเดิม
+            self.ids.txt_staff.focus = True   # ไปกรอก Staff
+
+        # ใช้ Staff เดิม
+        else:
+            self.ids.txt_barcode.focus = True # ข้ามไป Barcode
+    def toggle_staff_checkbox(self):
+    
+        card = self.ids.card_change_staff
+        label = self.ids.lbl_check
+
+        if self.change_staff:
+
+            self.change_staff = False
+
+            card.md_bg_color = (.35,.35,.35,1)
+            label.text = ""
+
+        else:
+
+            self.change_staff = True
+
+            card.md_bg_color = (0,0.75,0,1)
+            label.text = "✓"
+
+
+    def reset_staff_checkbox(self):
+
+        self.change_staff = False
+
+        self.ids.card_change_staff.md_bg_color = (.35,.35,.35,1)
+
+        self.ids.lbl_check.text = ""
+
+        def on_enter(self):
+            
+            self.update_recent_list()
+        
+            Clock.schedule_once(
+                lambda dt: self.force_focus(),
+                0.3
+            )                           
 
 
     def go_back(self):
@@ -590,41 +632,54 @@ class StockCountScreen(MDScreen):
             lambda dt:self.force_focus(),
             0.2
         )
-
     def force_focus(self):
-    
+        
         barcode = self.ids.txt_barcode
 
-        barcode.focus = False
-
-
-        def set_focus(dt):
-
+        if not barcode.focus:
             barcode.focus = True
+            
+    # def force_focus(self):
+    
+    #     barcode = self.ids.txt_barcode
 
-            print(
-                "BARCODE FOCUS =",
-                barcode.focus
-            )
+    #     barcode.focus = False
 
 
-        Clock.schedule_once(
-            set_focus,
-            0.1
-        )
+    #     def set_focus(dt):
+
+    #         barcode.focus = True
+
+    #         print(
+    #             "BARCODE FOCUS =",
+    #             barcode.focus
+    #         )
+
+
+    #     Clock.schedule_once(
+    #         set_focus,
+    #         0.1
+    #     )
+    
     def reset_scan_field(self):
-        # BUGFIX: เดิมฟังก์ชันนี้ถูกคอมเมนต์ทิ้งไว้ทั้งหมด แต่โค้ดด้านบนยังเรียก
-        # self.reset_scan_field() อยู่ 2 จุด (กรณีไม่กรอกตำแหน่ง/ผู้ตรวจนับ และกรณี
-        # ไม่พบสินค้า) ทำให้เกิด AttributeError แอปค้าง/พังทุกครั้งที่เจอ 2 เคสนี้
+        
         self.ids.txt_barcode.text = ""
-        #self.ids.txt_barcode.focus = False
 
-        Clock.schedule_once(
-            lambda dt: setattr(self.ids.txt_barcode, "focus", True),
-            0.1
-        )
+        if not self.ids.txt_barcode.focus:
+            self.ids.txt_barcode.focus = True
+    # def reset_scan_field(self):
+    #     # BUGFIX: เดิมฟังก์ชันนี้ถูกคอมเมนต์ทิ้งไว้ทั้งหมด แต่โค้ดด้านบนยังเรียก
+    #     # self.reset_scan_field() อยู่ 2 จุด (กรณีไม่กรอกตำแหน่ง/ผู้ตรวจนับ และกรณี
+    #     # ไม่พบสินค้า) ทำให้เกิด AttributeError แอปค้าง/พังทุกครั้งที่เจอ 2 เคสนี้
+    #     self.ids.txt_barcode.text = ""
+    #     #self.ids.txt_barcode.focus = False
 
-        #self.update_recent_list()
+    #     Clock.schedule_once(
+    #         lambda dt: setattr(self.ids.txt_barcode, "focus", True),
+    #         0.1
+    #     )
+
+    #     #self.update_recent_list()
 
     def update_recent_list(self):
         self.ids.list_recent_scans.clear_widgets()

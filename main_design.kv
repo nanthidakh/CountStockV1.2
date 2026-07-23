@@ -20,7 +20,7 @@ ScreenManager:
         MDLabel:
             text: "เก็บข้อมูลสต็อกสินค้า"
             font_name: "ThaiFont"
-            font_style: "H4"
+            font_size: "24sp"
             halign: "center"
             size_hint_y: None
             height: "80dp"
@@ -207,25 +207,15 @@ ScreenManager:
 
 <StockCountScreen>:
     name: 'count_screen'
-    # BUGFIX: เดิมมี `on_enter: root.focus_barcode()` ผูกไว้ตรงนี้ ซ้ำซ้อนกับ
-    # method `def on_enter(self):` ที่ override ไว้ใน main.py (StockCountScreen)
-    # ทั้งสองตัวถูกเรียกพร้อมกันทุกครั้งที่เข้าหน้านี้ ทำให้เกิด timer ตั้ง focus
-    # ของ txt_barcode แข่งกันสองชุดคนละจังหวะเวลา (0.3s/0.35s จากฝั่ง python
-    # กับ 0.2s/0.4s/0.45s จากฝั่ง kv) ผลคือ focus ถูกตั้ง True แล้วเด้งกลับ False
-    # แล้วค่อย True อีกทีในช่วงเวลาสั้นๆ ทำให้บนอุปกรณ์จริง (CipherLab RK25 /
-    # Newland MT67) cursor กลับไปที่ txt_barcode ไม่เสถียร บาง scan กลับ
-    # บาง scan ไม่กลับ แก้โดยลบบรรทัดนี้ออก ให้ logic การโฟกัสควบคุมจาก
-    # on_enter() ใน main.py เพียงจุดเดียว (single source of truth)
-    
+
     MDBoxLayout:
         orientation: 'vertical'
         md_bg_color: 0.98, 0.98, 0.98, 1
-        
-        # 1. ส่วน Header (รวมปุ่มกลับและชื่อหน้า)
+
+        # ---------------- Header ----------------
         MDBoxLayout:
             size_hint_y: None
             height: "56dp"
-            #md_bg_color: app.theme_cls.primary_color
             md_bg_color: 0.9, 0.5, 0.1, 1
 
             MDFlatButton:
@@ -234,102 +224,161 @@ ScreenManager:
                 text_color: 1, 1, 1, 1
                 font_name: "ThaiFont"
                 on_release: root.go_back()
-            
+
             MDLabel:
                 text: "3. เก็บข้อมูลสต็อกสินค้า"
                 font_name: "ThaiFont"
                 halign: "center"
                 theme_text_color: "Custom"
                 text_color: 1, 1, 1, 1
-        
-        # 2. ส่วนเนื้อหา
+
+        # ---------------- Location / Staff ----------------
         MDBoxLayout:
-            orientation: 'vertical'
-            padding: "10dp"
-            spacing: "10dp"
-            
-            # ช่อง Location & Staff
+            orientation: "vertical"
+            size_hint_y: None
+            height: "75dp"
+            padding: "8dp", "2dp"
+            spacing: "2dp"
+
             MDBoxLayout:
-                orientation: 'horizontal'
                 size_hint_y: None
-                height: "60dp"
-                spacing: "10dp"
+                height: "14dp"
+
+                MDLabel:
+                    text: "Loc."
+                    font_name: "ThaiFont"
+                    font_size: "10sp"
+                    size_hint_x: 0.40
+
+                MDLabel:
+                    text: "Staff"
+                    font_name: "ThaiFont"
+                    font_size: "10sp"
+                    size_hint_x: 0.40
+
+                Widget:
+                    size_hint_x: 0.20
+
+            MDBoxLayout:
+                orientation: "horizontal"
+                size_hint_y: None
+                height: "42dp"
+                spacing: "6dp"
+
                 MDTextField:
                     id: txt_location
-                    hint_text: "Location"
-                    font_name: "ThaiFont"
+                    size_hint_x: 0.40
+                    size_hint_y: None
+                    height: "42dp"
+                    mode: "rectangle"
                     multiline: False
                     write_tab: False
-                    on_text_validate: txt_staff.focus = True  # <--- เพิ่มจุดนี้
-                    mode: "rectangle"
+                    font_name: "ThaiFont"
+                    font_size: "14sp"
                     text: "001.01.01"
+                    on_text_validate: root.on_location_enter()
+
                 MDTextField:
                     id: txt_staff
-                    hint_text: "Staff:"
-                    font_name: "ThaiFont"
+                    size_hint_x: 0.40
+                    size_hint_y: None
+                    height: "42dp"
+                    mode: "rectangle"
                     multiline: False
                     write_tab: False
-                    on_text_validate: txt_barcode.focus = True # <--- เพิ่มจุดนี้
-                    mode: "rectangle"
-                    text: "Staff-A"
-            
-            # ช่องสแกน (เน้นชัดเจน)
-            MDTextField:
-                id: txt_barcode
-                hint_text: "Scan Barcode Here"
-                font_name: "ThaiFont"
-                mode: "rectangle"
-                multiline: False
-                size_hint_y: None
-                height: "30dp"
-                readonly: False
-                keyboard_suggestions: False
-                use_handles: False
-                write_tab: False
-                # BUGFIX: เดิมเคยตั้ง keyboard_mode: 'managed' ไว้เพื่อกันคีย์บอร์ด
-                # Android เด้ง แต่ managed ไปปิดกลไกที่เปิด SDL text-input mode ด้วย
-                # (ปกติ widget โหมด 'auto' จะเปิด text-input mode ให้เองตอน focus)
-                # ผลคือ Window.on_textinput ไม่ทำงานเลยแม้แต่บน PC (พิมพ์เข้าช่อง
-                # นี้ไม่ขึ้นอะไรเลย) จึงเอาออก กลับไปใช้ 'auto' (ค่า default)
-                # สาเหตุคีย์บอร์ดเด้งไม่เสถียรตัวจริงคือ Window.release_keyboard()
-                # ใน force_focus() ที่ไปชนกับการ toggle focus ซึ่งตัดออกไปแล้ว
-                # ในไฟล์ main.py ตั้งแต่รอบก่อนหน้า ไม่ใช่การเปิดคีย์บอร์ดเฉยๆ
-
-                on_text_validate: root.on_barcode_input()
-            
-            # ส่วนแสดงสินค้า
-            MDCard:
-                orientation: 'vertical'
-                padding: "10dp"
-                size_hint_y: None
-                height: "80dp"
-                md_bg_color: 0.9, 0.95, 1, 1
-                MDLabel:
-                    id: lbl_product_name
-                    text: "ชื่อสินค้า: [กรุณายิงบาร์โค้ด]"
                     font_name: "ThaiFont"
-                MDBoxLayout:
-                    MDLabel:
-                        id: lbl_product_code
-                        text: "รหัส: -"
-                        font_name: "ThaiFont"
-                    MDLabel:
-                        id: lbl_unit
-                        text: "หน่วย: -"
-                        font_name: "ThaiFont"
-                        halign: "right"
-            
-            # ตารางรายการล่าสุด
-            MDLabel:
-                text: "รายการที่สแกนล่าสุด:"
-                font_name: "ThaiFont"
-                size_hint_y: None
-                height: "25dp"
-                
-            MDScrollView:
-                MDList:
-                    id: list_recent_scans
+                    font_size: "14sp"
+                    text: "Staff-A"
+                    on_text_validate: 
+                        root.on_staff_enter()
+                        txt_barcode.focus = True
 
+                MDBoxLayout:
+                    orientation: "vertical"
+                    size_hint_x: 0.20
+                    spacing: "2dp"
+
+                    MDCard:
+                        id: card_change_staff
+                        size_hint: None, None
+                        size: "15dp", "15dp"
+                        radius: [1, 1, 1, 1]
+                        elevation: 1
+                        ripple_behavior: True
+                        md_bg_color: .35, .35, .35, 1
+                        pos_hint: {"center_x": .5}
+
+                        on_release: root.toggle_staff_checkbox()
+
+                        MDLabel:
+                            id: lbl_check
+                            text: ""
+                            halign: "center"
+                            valign: "middle"
+                            bold: True
+                            font_size: "20sp"
+                            theme_text_color: "Custom"
+                            text_color: 1, 1, 1, 1
+
+                    MDLabel:
+                        text: "เปลี่ยน\nStaff"
+                        font_name: "ThaiFont"
+                        font_size: "8sp"
+                        halign: "center"
+
+        # ---------------- Barcode ----------------
+        MDTextField:
+            id: txt_barcode
+            hint_text: "Scan Barcode Here"
+            font_name: "ThaiFont"
+            mode: "rectangle"
+            multiline: False
+            size_hint_y: None
+            height: "30dp"
+            readonly: False
+            keyboard_suggestions: False
+            use_handles: False
+            write_tab: False
+
+            on_text_validate: root.on_barcode_input()
+
+        # ---------------- Product ----------------
+        MDCard:
+            orientation: "vertical"
+            padding: "10dp"
+            size_hint_y: None
+            height: "80dp"
+            md_bg_color: 0.9, 0.95, 1, 1
+
+            MDLabel:
+                id: lbl_product_name
+                text: "ชื่อสินค้า: [กรุณายิงบาร์โค้ด]"
+                font_name: "ThaiFont"
+
+            MDBoxLayout:
+
+                MDLabel:
+                    id: lbl_product_code
+                    text: "รหัส: -"
+                    font_name: "ThaiFont"
+
+                MDLabel:
+                    id: lbl_unit
+                    text: "หน่วย: -"
+                    font_name: "ThaiFont"
+                    halign: "right"
+
+        # ---------------- Recent ----------------
+        MDLabel:
+            text: "รายการที่สแกนล่าสุด:"
+            font_name: "ThaiFont"
+            size_hint_y: None
+            height: "25dp"
+
+        MDScrollView:
+
+            MDList:
+                id: list_recent_scans
 <ExportScreen>:
     name: 'export_screen'
 
